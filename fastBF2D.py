@@ -1,5 +1,6 @@
 import numpy as np
 from scipy import signal, interpolate
+import dxchange
 
 def bilateral_numpy_fast(image, sigmaspatial, sigmarange, samplespatial=None, samplerange=None):
     """
@@ -103,12 +104,32 @@ def bilateral_numpy_fast(image, sigmaspatial, sigmarange, samplespatial=None, sa
     normalblurdata = np.where(blurweights < -1, 0, normalblurdata)
     
     # Create a meshgrid of x and y values for the output
-    (ygrid, xgrid) = np.meshgrid(range(width), range(height))
-    
+    (xgrid, ygrid) = np.meshgrid(range(width), range(height),indexing='ij')
     # Calculate the dimensions of the output
     dimx = (xgrid / samplespatial) + xypadding
     dimy = (ygrid / samplespatial) + xypadding
     dimz = (image - edgemin) / samplerange + zpadding
-
     return interpolate.interpn((range(normalblurdata.shape[0]), range(normalblurdata.shape[1]),
                                range(normalblurdata.shape[2])), normalblurdata, (dimx, dimy, dimz))
+
+
+def find_min_max(data):
+    """Find min and max values according to histogram"""
+
+    h, e = np.histogram(data[:], 1000)
+    stend = np.where(h > np.max(h)*0.0005)
+    st = stend[0][0]
+    end = stend[0][-1]
+    mmin = e[st]
+    mmax = e[end+1]
+    return mmin, mmax
+
+if __name__ == "__main__":    
+    f = dxchange.read_tiff(f'data/recon_00000.tiff')
+    
+    mmin,mmax=find_min_max(f)
+    f[f<mmin]=mmin
+    f[f>mmax]=mmax
+    f = np.uint8(255*(f-mmin)/(mmax-mmin))
+    fr = bilateral_numpy_fast(f, 20, 40, samplespatial=None, samplerange=None)    
+    dxchange.write_tiff(fr.astype('float32'),f'data_re2D/recon_00000.tiff',overwrite=True)

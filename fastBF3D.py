@@ -1,5 +1,8 @@
 import numpy as np
 from scipy import signal, interpolate
+import dxchange
+import time
+
 
 def bilateral_numpy_fast_3D(image, sigmaspatial, sigmarange, samplespatial=None, samplerange=None):
     """
@@ -114,7 +117,7 @@ def bilateral_numpy_fast_3D(image, sigmaspatial, sigmarange, samplespatial=None,
     normalblurdata = np.where(blurweights < -1, 0, normalblurdata)
 
     # Create a meshgrid of x and y values for the output
-    (xgrid, ygrid, zgrid) = np.meshgrid(np.arange(xdim), np.arange(ydim), np.arange(zdim))
+    (xgrid, ygrid, zgrid) = np.meshgrid(np.arange(xdim), np.arange(ydim), np.arange(zdim), indexing='ij')
 
     # Calculate the dimensions of the output
     dimx = (xgrid / samplespatial) + xyzpadding
@@ -122,6 +125,26 @@ def bilateral_numpy_fast_3D(image, sigmaspatial, sigmarange, samplespatial=None,
     dimz = (zgrid / samplespatial) + xyzpadding
 
     dimrange = (image - edgemin) / samplerange + rangepadding
-    
     return interpolate.interpn((range(normalblurdata.shape[0]), range(normalblurdata.shape[1]), range(normalblurdata.shape[2]), range(normalblurdata.shape[3])),
                               normalblurdata, (dimx, dimy, dimz, dimrange))
+
+
+def find_min_max(data):
+    """Find min and max values according to histogram"""
+    h, e = np.histogram(data[:], 1000)
+    stend = np.where(h > np.max(h)*0.0005)
+    st = stend[0][0]
+    end = stend[0][-1]
+    mmin = e[st]
+    mmax = e[end+1]
+    return mmin, mmax
+    
+if __name__ == "__main__":
+    f = dxchange.read_tiff_stack(f'data/recon_00000.tiff',ind=range(16))
+    
+    mmin,mmax=find_min_max(f[0])
+    f[f<mmin]=mmin
+    f[f>mmax]=mmax
+    f = np.uint8(255*(f-mmin)/(mmax-mmin))
+    fr = bilateral_numpy_fast_3D(f, 20, 40, samplespatial=None, samplerange=None)    
+    dxchange.write_tiff_stack(fr.astype('float32'),f'data_re3D/recon.tiff',overwrite=True)
